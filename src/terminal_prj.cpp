@@ -1,7 +1,7 @@
 /*
- * This file is part of the stm32-template project.
+ * This file is part of the tumanako_vc project.
  *
- * Copyright (C) 2020 Johannes Huebner <dev@johanneshuebner.com>
+ * Copyright (C) 2011 Johannes Huebner <dev@johanneshuebner.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,10 +17,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* This file contains a standard set of commands that are used by the
- * esp8266 web interface.
- * You can add your own commands if needed
- */
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/stm32/usart.h>
 #include "hwdefs.h"
@@ -33,13 +29,18 @@
 #include "errormessage.h"
 #include "stm32_can.h"
 
+
 #define NUM_BUF_LEN 15
+
 
 static void ParamGet(char *arg);
 static void ParamStream(char *arg);
 static void ParamSet(char *arg);
 static void ParamFlag(char *arg);
 static void LoadDefaults(char *arg);
+static void GetAll(char *arg);
+static void PrintList(char *arg);
+static void PrintAtr(char *arg);
 static void SaveParameters(char *arg);
 static void LoadParameters(char *arg);
 static void Help(char *arg);
@@ -48,15 +49,18 @@ static void PrintSerial(char *arg);
 static void MapCan(char *arg);
 static void PrintErrors(char *arg);
 static void Reset(char *arg);
-static void FastUart(char *arg);
 
 extern "C" const TERM_CMD TermCmds[] =
 {
+
   { "set", ParamSet },
   { "get", ParamGet },
   { "flag", ParamFlag },
   { "stream", ParamStream },
   { "defaults", LoadDefaults },
+  { "all", GetAll },
+  { "list", PrintList },
+  { "atr",  PrintAtr },
   { "save", SaveParameters },
   { "load", LoadParameters },
   { "help", Help },
@@ -65,9 +69,11 @@ extern "C" const TERM_CMD TermCmds[] =
   { "serial", PrintSerial },
   { "errors", PrintErrors },
   { "reset", Reset },
-  { "fastuart", FastUart },
+  //{ "fastuart", FastUart },
   { NULL, NULL }
 };
+
+
 
 static void PrintCanMap(Param::PARAM_NUM param, int canid, int offset, int length, s32fp gain, bool rx)
 {
@@ -152,22 +158,8 @@ static void MapCan(char *arg)
       }
 
       *ending = 0;
-      int iVal = my_atoi(arg);
 
-      //allow gain values < 1 and re-interpret them
-      if (i == (numArgs - 1) && iVal == 0)
-      {
-         values[i] = fp_atoi(arg, 16);
-         //The can values interprets abs(values) < 32 as gain and > 32 as divider
-         //e.g. 0.25 means integer division by 4 so we need to calculate div = 1/value
-         //0.25 with 16 decimals is 16384, 65536/16384 = 4
-         values[i] = (32 << 16) / values[i];
-      }
-      else
-      {
-         values[i] = iVal;
-      }
-
+      values[i] = my_atoi(arg);
       arg = my_trim(ending + 1);
    }
 
@@ -204,12 +196,10 @@ static void MapCan(char *arg)
 
 static void PrintParamsJson(char *arg)
 {
-   arg = my_trim(arg);
-
    const Param::Attributes *pAtr;
    char comma = ' ';
-   bool printHidden = arg[0] == 'h';
 
+   arg = arg;
    printf("{");
    for (uint32_t idx = 0; idx < Param::PARAM_LAST; idx++)
    {
@@ -218,7 +208,7 @@ static void PrintParamsJson(char *arg)
       s32fp canGain;
       pAtr = Param::GetAttrib((Param::PARAM_NUM)idx);
 
-      if ((Param::GetFlag((Param::PARAM_NUM)idx) & Param::FLAG_HIDDEN) == 0 || printHidden)
+      if ((Param::GetFlag((Param::PARAM_NUM)idx) & Param::FLAG_HIDDEN) == 0)
       {
          printf("%c\r\n   \"%s\": {\"unit\":\"%s\",\"value\":%f,",comma, pAtr->name, pAtr->unit, Param::Get((Param::PARAM_NUM)idx));
 
@@ -230,8 +220,7 @@ static void PrintParamsJson(char *arg)
 
          if (Param::IsParam((Param::PARAM_NUM)idx))
          {
-            printf("\"isparam\":true,\"minimum\":%f,\"maximum\":%f,\"default\":%f,\"category\":\"%s\",\"i\":%d}",
-                   pAtr->min, pAtr->max, pAtr->def, pAtr->category, idx);
+            printf("\"isparam\":true,\"minimum\":%f,\"maximum\":%f,\"default\":%f,\"category\":\"%s\"}", pAtr->min, pAtr->max, pAtr->def, pAtr->category);
          }
          else
          {
@@ -241,6 +230,43 @@ static void PrintParamsJson(char *arg)
       }
    }
    printf("\r\n}\r\n");
+}
+
+static void PrintList(char *arg)
+{
+   const Param::Attributes *pAtr;
+
+   arg = arg;
+
+   printf("Available parameters and values\r\n");
+
+   for (uint32_t idx = 0; idx < Param::PARAM_LAST; idx++)
+   {
+      pAtr = Param::GetAttrib((Param::PARAM_NUM)idx);
+
+      if ((Param::GetFlag((Param::PARAM_NUM)idx) & Param::FLAG_HIDDEN) == 0)
+         printf("%s [%s]\r\n", pAtr->name, pAtr->unit);
+   }
+}
+
+static void PrintAtr(char *arg)
+{
+   const Param::Attributes *pAtr;
+
+   arg = arg;
+
+   printf("Parameter attributes\r\n");
+   printf("Name\t\tmin - max [default]\r\n");
+
+   for (uint32_t idx = 0; idx < Param::PARAM_LAST; idx++)
+   {
+      pAtr = Param::GetAttrib((Param::PARAM_NUM)idx);
+      /* Only display for params */
+      if (Param::IsParam((Param::PARAM_NUM)idx) && (Param::GetFlag((Param::PARAM_NUM)idx) & Param::FLAG_HIDDEN) == 0)
+      {
+         printf("%s\t\t%f - %f [%f]\r\n", pAtr->name,pAtr->min,pAtr->max,pAtr->def);
+      }
+   }
 }
 
 static void ParamGet(char *arg)
@@ -342,6 +368,19 @@ static void LoadDefaults(char *arg)
    printf("Defaults loaded\r\n");
 }
 
+static void GetAll(char *arg)
+{
+   const Param::Attributes *pAtr;
+
+   arg = arg;
+
+   for (uint32_t  idx = 0; idx < Param::PARAM_LAST; idx++)
+   {
+      pAtr = Param::GetAttrib((Param::PARAM_NUM)idx);
+      printf("%s\t\t%f\r\n", pAtr->name, Param::Get((Param::PARAM_NUM)idx));
+   }
+}
+
 static void ParamSet(char *arg)
 {
    char *pParamVal;
@@ -360,7 +399,7 @@ static void ParamSet(char *arg)
    *pParamVal = 0;
    pParamVal++;
 
-   val = fp_atoi(pParamVal, FRAC_DIGITS);
+   val = fp_atoi(pParamVal);
    idx = Param::NumFromString(arg);
 
    if (Param::PARAM_INVALID != idx)
@@ -475,9 +514,6 @@ static void PrintSerial(char *arg)
 
 static void Help(char *arg)
 {
-   //If you want you could print some instructions here
-   //But since the terminal is mostly used by the web interface
-   //it makes limited sense.
    arg = arg;
 }
 
@@ -487,11 +523,3 @@ static void Reset(char *arg)
    scb_reset_system();
 }
 
-static void FastUart(char *arg)
-{
-   arg = my_trim(arg);
-   int baud = arg[0] == '0' ? USART_BAUDRATE : 921600;
-   printf("OK\r\n");
-   printf("Baud rate now %d\r\n", baud);
-   usart_set_baudrate(TERM_USART, baud);
-}

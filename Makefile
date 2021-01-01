@@ -17,37 +17,31 @@
 ## along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ##
 
-OUT_DIR      = obj
-PREFIX		?= arm-none-eabi
-CONTROL     ?= SINE
-CONTROLLC   := $(shell echo $(CONTROL) | tr A-Z a-z)
-BINARY		= stm32_$(CONTROLLC)
-SIZE        = $(PREFIX)-size
-CC		      = $(PREFIX)-gcc
-CPP	      = $(PREFIX)-g++
-LD		      = $(PREFIX)-gcc
+BINARY		= stm32_vcu
+OUT_DIR     = obj
+PREFIX	  ?= arm-none-eabi
+SIZE  = $(PREFIX)-size
+CC		= $(PREFIX)-gcc
+CPP	= $(PREFIX)-g++
+LD		= $(PREFIX)-gcc
 OBJCOPY		= $(PREFIX)-objcopy
 OBJDUMP		= $(PREFIX)-objdump
 MKDIR_P     = mkdir -p
 TERMINAL_DEBUG ?= 0
-CFLAGS		= -Os -Wall -Wextra -Iinclude/ -Ilibopeninv/include -Ilibopencm3/include \
-             -fno-common -fno-builtin -pedantic -DSTM32F1 -DT_DEBUG=$(TERMINAL_DEBUG) \
-             -DCONTROL=CTRL_$(CONTROL) -DCTRL_SINE=0 -DCTRL_FOC=1 \
+CFLAGS		= -Os -Wall -Wextra -Ilibopeninv/include -Iinclude/ -Ilibopencm3/include \
+             -fno-common -fno-builtin -pedantic -DSTM32F1 -DT_DEBUG=$(TERMINAL_DEBUG)  \
 				 -mcpu=cortex-m3 -mthumb -std=gnu99 -ffunction-sections -fdata-sections
-CPPFLAGS    = -Os -Wall -Wextra -Iinclude/ -Ilibopeninv/include -Ilibopencm3/include \
-            -fno-common -std=c++11 -pedantic -DSTM32F1 -DT_DEBUG=$(TERMINAL_DEBUG) \
-             -DCONTROL=CTRL_$(CONTROL) -DCTRL_SINE=0 -DCTRL_FOC=1 \
-				-ffunction-sections -fdata-sections -fno-builtin -fno-rtti -fno-exceptions -fno-unwind-tables -mcpu=cortex-m3 -mthumb
-LDSCRIPT	  = linker.ld
-LDFLAGS    = -Llibopencm3/lib -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections,-Map,linker.map
-OBJSL		  = main.o hwinit.o stm32scheduler.o params.o terminal.o terminal_prj.o \
-             my_string.o digio.o sine_core.o my_fp.o printf.o anain.o \
-             param_save.o errormessage.o stm32_can.o \
-             picontroller.o
-
-OBJS     = $(patsubst %.o,obj/%.o, $(OBJSL))
-vpath %.c src/ libopeninv/src
-vpath %.cpp src/ libopeninv/src
+CPPFLAGS    = -Os -Wall -Wextra -Ilibopeninv/include -Iinclude/ -Ilibopencm3/include \
+            -fno-common -std=c++11 -pedantic -DSTM32F1 -DT_DEBUG=$(TERMINAL_DEBUG)  \
+		 -ffunction-sections -fdata-sections -fno-builtin -fno-rtti -fno-exceptions -fno-unwind-tables -mcpu=cortex-m3 -mthumb
+LDSCRIPT	= $(BINARY).ld
+LDFLAGS  = -Llibopencm3/lib -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections,-Map,linker.map
+OBJSL		= $(BINARY).o hwinit.o stm32scheduler.o params.o terminal.o terminal_prj.o \
+           my_string.o digio.o my_fp.o printf.o anain.o throttle.o isa_shunt.o Can_E46.o Can_E65.o GS450H.o temp_meas.o \
+           param_save.o errormessage.o stm32_can.o leafinv.o 
+OBJS     = $(patsubst %.o,$(OUT_DIR)/%.o, $(OBJSL))
+vpath %.c src/ libopeninv/src/
+vpath %.cpp src/ libopeninv/src/
 
 OPENOCD_BASE	= /usr
 OPENOCD		= $(OPENOCD_BASE)/bin/openocd
